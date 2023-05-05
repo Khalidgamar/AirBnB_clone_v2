@@ -1,66 +1,68 @@
 #!/usr/bin/python3
 """
-    Fabric script that creates and distributes an archive
-    on my web servers, using deploy function
+Fabric script based on the file 2-do_deploy_web_static.py that creates and
+distributes an archive to the web servers
 """
-from fabric.api import *
-from fabric.operations import run, put, sudo, local
+from fabric.context_managers import cd, hide,\
+        settings, show, path, prefix, lcd, quiet, warn_only,\
+        remote_tunnel, shell_env
+from fabric.decorators import hosts, roles,\
+        runs_once, with_settings, task, serial, parallel
+from fabric.operations import require, prompt,\
+        put, get, run, sudo, local, reboot, open_shell
+from fabric.state import env, output
+from fabric.utils import abort, warn, puts, fastprint
+from fabric.tasks import execute
 from datetime import datetime
 import os
 
-env.hosts = ['54.90.153.236', '34.148.9.175']
-created_path = None
+env.hosts = ["3.236.44.83", "44.200.29.105"]
+env.user = 'ubuntu'
 
 
 def do_pack():
+    """ function generates a tgz archive from the contents of
+    the web_static folder of the AirBnB clone
     """
-        generates a .tgz archine from contents of web_static
-    """
-    time = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-    file_name = "versions/web_static_{}.tgz".format(time)
     try:
-        local("mkdir -p ./versions")
-        local("tar --create --verbose -z --file={} ./web_static"
-              .format(file_name))
-        return file_name
-    except IOError:
+        my_time = datetime.now().strftime('%Y%m%d%H%M%S')
+        local("mkdir -p versions")
+        my_file = 'versions/web_static_' + my_time + '.tgz'
+        local('tar -vzcf {} web_static'.format(my_file))
+        return (my_file)
+    except Exception:
         return None
 
 
 def do_deploy(archive_path):
+    """ function distrubtes an archive to my web servers
     """
-        using fabric to distribute archive
-    """
-    if os.path.isfile(archive_path) is False:
+    path_existence = os.path.exists(archive_path)
+    if path_existence is False:
         return False
     try:
-        archive = archive_path.split("/")[-1]
-        path = "/data/web_static/releases"
-        put("{}".format(archive_path), "/tmp/{}".format(archive))
-        folder = archive.split(".")
-        run("mkdir -p {}/{}/".format(path, folder[0]))
-        new_archive = '.'.join(folder)
-        run("tar -xzf /tmp/{} -C {}/{}/"
-            .format(new_archive, path, folder[0]))
-        run("rm /tmp/{}".format(archive))
-        run("mv {}/{}/web_static/* {}/{}/"
-            .format(path, folder[0], path, folder[0]))
-        run("rm -rf {}/{}/web_static".format(path, folder[0]))
-        run("rm -rf /data/web_static/current")
-        run("ln -sf {}/{} /data/web_static/current"
-            .format(path, folder[0]))
+        path_split = archive_path.replace('/', ' ').replace('.', ' ').split()
+        just_directory = path_split[0]
+        no_tgz_name = path_split[1]
+        full_filename = path_split[1] + '.' + path_split[2]
+        folder = '/data/web_static/releases/{}/'.format(no_tgz_name)
+        put(archive_path, '/tmp/')
+        run('mkdir -p {}'.format(folder))
+        run('tar -xzf /tmp/{} -C {}/'.format(full_filename, folder))
+        run('rm /tmp/{}'.format(full_filename))
+        run('mv {}/web_static/* {}'.format(folder, folder))
+        run('rm -rf {}/web_static'.format(folder))
+        current = '/data/web_static/current'
+        run('rm -rf {}'.format(current))
+        run('ln -s {}/ {}'.format(folder, current))
         return True
-    except IOError:
+    except Exception:
         return False
 
 
 def deploy():
-    """
-        deploy function that creates/distributes an archive
-    """
-    global created_path
-    if created_path is None:
-        created_path = do_pack()
-    if created_path is None:
+    """creates and distributes an archive to the web servers"""
+    archive_path = do_pack()
+    if archive_path is None:
         return False
-    return do_deploy(created_path)
+    return do_deploy(archive_path)
